@@ -112,6 +112,18 @@ with tab_commute:
     if not commute_list:
         st.info("Transit options are being generated for this route.")
     else:
+        # Check if overland transit (bus/car) was excluded due to geographic impossibility
+        is_air_only = not any(
+            any(k in opt.mode.lower() or k in opt.title.lower() for k in ["bus", "car", "drive", "road trip", "highway"])
+            for opt in commute_list
+        )
+        if is_air_only:
+            st.info(
+                f"✈️ **Physical Feasibility Notice:** Travel between **{origin_display}** and **{res.destination}** requires air travel. "
+                f"Overland options (cross-border trains, buses, and road trips) are not physically possible and have been automatically excluded. "
+                f"Viable flights and official internal transit at {res.destination} are detailed below."
+            )
+
         for opt in commute_list:
             with st.container():
                 st.markdown(f"""

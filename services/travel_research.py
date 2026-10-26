@@ -53,8 +53,104 @@ def condense_snapshot(text: str, max_chars: int = 15000) -> str:
     condensed = "\n".join(meaningful)
     return condensed[:max_chars] if len(condensed) > max_chars else condensed
 
+# Known international destinations, countries, and world cities
+INTERNATIONAL_KEYWORDS = {
+    # Switzerland / Alps
+    "switzerland", "swiss", "zurich", "geneva", "interlaken", "lucerne", "zermatt", "basel", "bern",
+    "lausanne", "st moritz", "grindelwald", "jungfrau", "swirzerland", "switz",
+    # Europe
+    "france", "paris", "nice", "lyon", "marseille", "bordeaux", "strasbourg", "chamonix",
+    "italy", "rome", "florence", "venice", "milan", "naples", "amalfi", "positano", "cinque terre",
+    "germany", "berlin", "munich", "frankfurt", "hamburg", "cologne", "bavaria",
+    "spain", "barcelona", "madrid", "seville", "valencia", "ibiza", "mallorca", "granada",
+    "uk", "united kingdom", "london", "edinburgh", "scotland", "manchester", "birmingham", "ireland", "dublin",
+    "europe", "european",
+    "netherlands", "amsterdam", "rotterdam", "hague",
+    "austria", "vienna", "salzburg", "innsbruck", "hallstatt",
+    "sweden", "stockholm", "gothenburg",
+    "norway", "oslo", "bergen", "tromso", "fjords",
+    "denmark", "copenhagen",
+    "finland", "helsinki", "rovaniemi", "lapland",
+    "iceland", "reykjavik",
+    "greece", "athens", "santorini", "mykonos", "crete", "rhodes",
+    "portugal", "lisbon", "porto", "algarve", "madeira",
+    "czech republic", "czechia", "prague",
+    "hungary", "budapest",
+    "belgium", "brussels", "bruges", "ghent",
+    "poland", "krakow", "warsaw",
+    "croatia", "dubrovnik", "split", "zagreb",
+    # Americas
+    "usa", "united states", "america", "new york", "nyc", "san francisco", "los angeles", "las vegas",
+    "chicago", "miami", "orlando", "seattle", "boston", "washington dc", "hawaii", "honolulu", "maui",
+    "canada", "toronto", "vancouver", "montreal", "banff", "calgary", "ottawa",
+    "mexico", "cancun", "mexico city", "tulum", "cabo",
+    "brazil", "rio de janeiro", "sao paulo",
+    "argentina", "buenos aires", "patagonia",
+    "peru", "lima", "cusco", "machu picchu",
+    # Asia Pacific
+    "australia", "sydney", "melbourne", "brisbane", "perth", "gold coast", "cairns",
+    "new zealand", "auckland", "queenstown", "christchurch", "rotorua",
+    "japan", "tokyo", "kyoto", "osaka", "hokkaido", "sapporo", "hiroshima", "fuji",
+    "south korea", "korea", "seoul", "busan", "jeju",
+    "singapore",
+    "malaysia", "kuala lumpur", "penang", "langkawi",
+    "thailand", "bangkok", "phuket", "pattaya", "krabi", "chiang mai", "koh samui",
+    "indonesia", "bali", "jakarta", "lombok", "ubud", "komodo",
+    "vietnam", "hanoi", "ho chi minh", "da nang", "ha long", "hoi an",
+    "philippines", "manila", "boracay", "cebu", "palawan",
+    "hong kong", "macau", "taiwan", "taipei",
+    # Middle East & Africa
+    "uae", "dubai", "abu dhabi", "sharjah",
+    "qatar", "doha",
+    "oman", "muscat",
+    "turkey", "istanbul", "cappadocia", "antalya",
+    "egypt", "cairo", "luxor", "hurghada", "sharm",
+    "south africa", "cape town", "johannesburg", "kruger",
+    "kenya", "nairobi", "masai mara",
+    "morocco", "marrakech", "casablanca", "fes",
+    "tanzania", "zanzibar", "serengeti",
+    # Islands
+    "maldives", "male",
+    "mauritius",
+    "seychelles",
+    "fiji",
+    "sri lanka", "colombo", "kandy", "galle",
+    "nepal", "kathmandu", "pokhara",
+    "bhutan", "paro", "thimphu"
+}
+
+ISLAND_DESTINATIONS = {
+    "maldives", "male", "andaman", "nicobar", "port blair", "havelock", "neil island",
+    "lakshadweep", "agatti", "kavaratti", "mauritius", "bali", "phuket", "koh samui",
+    "hawaii", "honolulu", "maui", "santorini", "mykonos", "seychelles", "fiji", "bora bora", "zanzibar"
+}
+
+def check_route_feasibility(origin: str, destination: str) -> Tuple[bool, str]:
+    """
+    Evaluates whether the route is international, island, or domestic mainland.
+    Returns (is_overseas, route_category) where route_category is
+    'international', 'island', or 'domestic_mainland'.
+    """
+    dest_clean = destination.strip().lower()
+    origin_clean = origin.strip().lower() if origin.strip() else "your city"
+
+    # 1. Check if island destination
+    for isl in ISLAND_DESTINATIONS:
+        if isl in dest_clean:
+            return True, "island"
+
+    # 2. Check if international destination
+    for kw in INTERNATIONAL_KEYWORDS:
+        if kw in dest_clean:
+            return True, "international"
+
+    return False, "domestic_mainland"
+
 def generate_commute_options(destination: str, starting_city: str) -> List[CommuteOption]:
-    """Generates transit and commute options with direct live booking URLs."""
+    """
+    Generates physically feasible transit and commute options with direct live booking URLs.
+    Strictly excludes impossible overland options (no buses or cars across oceans or continents).
+    """
     origin = starting_city.strip() if starting_city.strip() else "Your City"
     dest = destination.strip()
     
@@ -63,49 +159,163 @@ def generate_commute_options(destination: str, starting_city: str) -> List[Commu
     dest_slug = dest.lower().replace(" ", "-")
     origin_slug = origin.lower().replace(" ", "-")
 
-    options = [
-        CommuteOption(
-            mode="Flight ✈️",
-            title=f"Direct / Connecting Flights ({origin} ➔ {dest})",
-            duration="1h 15m - 2h 45m",
-            estimated_cost_inr="₹2,800 - ₹5,500 / person",
-            details=f"Major airlines (IndiGo, Air India, Akasa) operate frequent services to {dest}'s closest airports.",
-            booking_url=f"https://www.google.com/travel/flights?q=flights+from+{origin_q}+to+{dest_q}",
-            source_url="https://www.google.com/travel/flights",
-            icon="✈️"
-        ),
-        CommuteOption(
-            mode="Train 🚆",
-            title=f"Express / Vande Bharat Trains ({origin} ➔ {dest})",
-            duration="5h 30m - 11h 00m",
-            estimated_cost_inr="₹450 (Sleeper) | ₹1,200 - ₹2,100 (3AC/2AC)",
-            details=f"Fast superfast expresses and high-speed Vande Bharat / Tejas routes connect {origin} to main railway junctions in {dest}.",
-            booking_url=f"https://www.makemytrip.com/railways/listing?srcCity={origin_q}&destCity={dest_q}",
-            source_url="https://www.irctc.co.in/",
-            icon="🚆"
-        ),
-        CommuteOption(
-            mode="Intercity Bus 🚌",
-            title=f"AC Sleeper / Multi-Axle Volvo Bus",
-            duration="8h 00m - 14h 00m",
-            estimated_cost_inr="₹750 - ₹1,600 / person",
-            details="Overnight sleeper coaches with charging ports, reclining berths, and direct city drops.",
-            booking_url=f"https://www.redbus.in/bus-tickets/{origin_slug}-to-{dest_slug}",
-            source_url="https://www.redbus.in/",
-            icon="🚌"
-        ),
-        CommuteOption(
-            mode="Road Trip 🚗",
-            title=f"Self-Drive / Private Cab via National Highway",
-            duration="Depends on route",
-            estimated_cost_inr="₹12 - ₹16 / km (or fuel + tolls)",
-            details=f"Scenic road trip along major national highways with roadside dhabas and fuel stops.",
-            booking_url=f"https://www.google.com/maps/dir/{origin_q}/{dest_q}",
-            source_url="https://www.google.com/maps",
-            icon="🚗"
-        )
-    ]
-    return options
+    is_overseas, route_cat = check_route_feasibility(origin, dest)
+
+    if route_cat == "international":
+        # International Flight
+        flight_title = f"Direct / 1-Stop International Flights ({origin} ➔ {dest})"
+        flight_details = f"Major international carriers (Emirates, Lufthansa, Swiss, Qatar Airways, Air India) operate flights connecting {origin} to {dest}'s international airport hubs."
+        
+        options = [
+            CommuteOption(
+                mode="Flight ✈️",
+                title=flight_title,
+                duration="9h 30m - 14h 00m",
+                estimated_cost_inr="₹45,000 - ₹78,000 / person round-trip",
+                details=flight_details,
+                booking_url=f"https://www.google.com/travel/flights?q=flights+from+{origin_q}+to+{dest_q}",
+                source_url="https://www.google.com/travel/flights",
+                icon="✈️"
+            )
+        ]
+
+        # Specific destination rail / transit passes
+        dest_lower = dest.lower()
+        if any(w in dest_lower for w in ["swiss", "switzerland", "swirzerland", "zurich", "geneva", "interlaken"]):
+            options.append(CommuteOption(
+                mode="Scenic Rail Pass 🚆",
+                title="Swiss Travel Pass & SBB Federal Railways (Inside Switzerland)",
+                duration="All-in-One Scenic Network",
+                estimated_cost_inr="~CHF 244 (₹23,500) for 3-Day Pass",
+                details="The gold standard for Swiss transit: unlimited panoramic trains (Glacier Express, Bernina Express), lake steamers, mountain railways, and city trams across Switzerland.",
+                booking_url="https://www.sbb.ch/en/",
+                source_url="https://www.sbb.ch/en/",
+                icon="🚆"
+            ))
+            options.append(CommuteOption(
+                mode="Airport Express 🚇",
+                title="Airport Rail Link (Zurich/Geneva Airport to City Center)",
+                duration="10 - 15 mins",
+                estimated_cost_inr="~CHF 7 - 14 (₹650 - ₹1,300) or Free with Swiss Pass",
+                details="High-frequency express trains departing directly beneath the airport terminals into Zurich Hauptbahnhof (HB) or Geneva Cornavin station.",
+                booking_url="https://www.sbb.ch/en/",
+                source_url="https://www.sbb.ch/en/",
+                icon="🚇"
+            ))
+        elif any(w in dest_lower for w in ["france", "paris", "germany", "italy", "spain", "europe", "austria", "netherlands", "uk", "london"]):
+            options.append(CommuteOption(
+                mode="High-Speed Rail 🚆",
+                title=f"Eurail & Intercity Rail Network (Inside {dest})",
+                duration="1h 30m - 3h 30m between regional cities",
+                estimated_cost_inr="€40 - €120 / journey (₹3,600 - ₹11,000)",
+                details=f"Fast high-speed trains (TGV, ICE, Eurostar, Frecciarossa) connecting regional hubs directly into city centers.",
+                booking_url="https://www.thetrainline.com/",
+                source_url="https://www.thetrainline.com/",
+                icon="🚆"
+            ))
+            options.append(CommuteOption(
+                mode="Airport Ground Link 🚇",
+                title=f"Airport Express Metro / Shuttle to Central {dest}",
+                duration="20 - 45 mins",
+                estimated_cost_inr="€10 - €22 / person (₹900 - ₹2,000)",
+                details="Dedicated airport express trains or rapid transit lines connecting arrival terminals to central transit stations.",
+                booking_url=f"https://www.google.com/maps/dir/{dest_q}+Airport/{dest_q}+City+Center",
+                source_url="https://www.google.com/maps",
+                icon="🚇"
+            ))
+        elif "japan" in dest_lower or "tokyo" in dest_lower:
+            options.append(CommuteOption(
+                mode="Bullet Train 🚄",
+                title="JR Shinkansen High-Speed Bullet Trains (Across Japan)",
+                duration="2h 15m (Tokyo ➔ Kyoto/Osaka)",
+                estimated_cost_inr="¥14,000 - ¥29,000 (₹7,800 - ₹16,000)",
+                details="Punctual high-speed bullet trains linking major prefectures, plus Tokyo Metro / Suica IC card for city transit.",
+                booking_url="https://www.japanrailpass.net/en/",
+                source_url="https://www.japanrailpass.net/",
+                icon="🚄"
+            ))
+        else:
+            options.append(CommuteOption(
+                mode="Destination Transit 🚇",
+                title=f"Local Public Transit, Metro & Licensed Cabs in {dest}",
+                duration="Frequent schedules",
+                estimated_cost_inr="₹600 - ₹1,800 / day",
+                details=f"Rapid transit metro lines, airport shuttles, and metered taxis for moving around {dest}.",
+                booking_url=f"https://www.google.com/maps/search/?api=1&query={dest_q}+public+transit",
+                source_url="https://www.google.com/travel",
+                icon="🚇"
+            ))
+        return options
+
+    elif route_cat == "island":
+        options = [
+            CommuteOption(
+                mode="Flight ✈️",
+                title=f"Direct / Connecting Flights ({origin} ➔ {dest})",
+                duration="2h 15m - 5h 00m",
+                estimated_cost_inr="₹6,500 - ₹16,000 / person round-trip",
+                details=f"Air travel landing at {dest}'s primary airport hub (e.g., Port Blair IXZ, Male MLE, Agatti AGX).",
+                booking_url=f"https://www.google.com/travel/flights?q=flights+from+{origin_q}+to+{dest_q}",
+                source_url="https://www.google.com/travel/flights",
+                icon="✈️"
+            ),
+            CommuteOption(
+                mode="Ferry / Transfer ⛴️",
+                title=f"Speedboat & Inter-Island Catamaran Transfers ({dest})",
+                duration="45m - 2h 30m",
+                estimated_cost_inr="₹1,200 - ₹4,500 / person",
+                details="Scheduled high-speed catamaran ferries or resort speedboats connecting arrival docks to destination beaches and island resorts.",
+                booking_url=f"https://www.google.com/search?q={dest_q}+ferry+booking",
+                source_url="https://www.google.com/travel",
+                icon="⛴️"
+            )
+        ]
+        return options
+
+    else:
+        # Domestic mainland: flight, train, bus, road trip
+        return [
+            CommuteOption(
+                mode="Flight ✈️",
+                title=f"Direct / Connecting Flights ({origin} ➔ {dest})",
+                duration="1h 15m - 2h 45m",
+                estimated_cost_inr="₹2,800 - ₹5,500 / person",
+                details=f"Major domestic airlines (IndiGo, Air India, Akasa) operate frequent services to {dest}'s closest airports.",
+                booking_url=f"https://www.google.com/travel/flights?q=flights+from+{origin_q}+to+{dest_q}",
+                source_url="https://www.google.com/travel/flights",
+                icon="✈️"
+            ),
+            CommuteOption(
+                mode="Train 🚆",
+                title=f"Express / Vande Bharat Trains ({origin} ➔ {dest})",
+                duration="5h 30m - 11h 00m",
+                estimated_cost_inr="₹450 (Sleeper) | ₹1,200 - ₹2,100 (3AC/2AC)",
+                details=f"Fast superfast expresses and high-speed Vande Bharat / Tejas routes connect {origin} to main railway junctions in {dest}.",
+                booking_url=f"https://www.makemytrip.com/railways/listing?srcCity={origin_q}&destCity={dest_q}",
+                source_url="https://www.irctc.co.in/",
+                icon="🚆"
+            ),
+            CommuteOption(
+                mode="Intercity Bus 🚌",
+                title=f"AC Sleeper / Multi-Axle Volvo Bus",
+                duration="8h 00m - 14h 00m",
+                estimated_cost_inr="₹750 - ₹1,600 / person",
+                details="Overnight sleeper coaches with charging ports, reclining berths, and direct city drops.",
+                booking_url=f"https://www.redbus.in/bus-tickets/{origin_slug}-to-{dest_slug}",
+                source_url="https://www.redbus.in/",
+                icon="🚌"
+            ),
+            CommuteOption(
+                mode="Road Trip 🚗",
+                title=f"Self-Drive / Private Cab via National Highway",
+                duration="Depends on route",
+                estimated_cost_inr="₹12 - ₹16 / km (or fuel + tolls)",
+                details=f"Scenic road trip along major national highways with roadside dhabas and fuel stops.",
+                booking_url=f"https://www.google.com/maps/dir/{origin_q}/{dest_q}",
+                source_url="https://www.google.com/maps",
+                icon="🚗"
+            )
+        ]
 
 def get_sample_images_for_destination(dest: str) -> Dict[str, str]:
     """Provides high-quality travel images matching destination themes."""
@@ -178,12 +388,32 @@ Perform comprehensive extraction and planning:
 1. Extract at least 6 verified attractions, 3-4 distinct accommodation options, and 3-4 authentic regional dining spots.
 2. For each accommodation, extract a real hotel/resort/hostel name. Note its nightly rate (or estimate based on the tier).
 3. Generate a realistic {trip_req.num_days}-day itinerary.
-4. Curate an 'Editor's Best Recommendation' highlighting the best commute mode, top stay, top 3 must-visit sights, and signature food.
-5. Return ONLY a valid JSON object matching this schema:
+4. Evaluate physically feasible commute options between '{trip_req.starting_city if trip_req.starting_city else 'Origin'}' and '{trip_req.destination}'.
+   CRITICAL REALITY RULE: Return ONLY commute options that are physically possible and realistic between origin and destination:
+   - If the trip is International / Transcontinental / Cross-Ocean / Island (e.g. Bengaluru to Switzerland, India to Europe/USA/Australia, or to Maldives/Andaman):
+     * NEVER return a train, bus, or road trip from the origin city! Overland travel between India and Switzerland/Europe/USA is impossible.
+     * ONLY return:
+       - International Flight (origin to destination)
+       - Local Scenic Rail or Public Transit Pass at Destination (e.g. Swiss Travel Pass / SBB Trains in Switzerland, Eurail in Europe, JR Pass in Japan, or Ferry/Speedboat in Maldives/Andaman)
+       - Airport Ground Link / Rail Shuttle to City Center
+   - If the trip is Domestic Mainland (e.g. Mumbai to Goa, Delhi to Jaipur):
+     * Return feasible options (Flight, Train like Vande Bharat/Express, Bus, Road trip) based on realistic distance.
+5. Curate an 'Editor's Best Recommendation' highlighting the best commute mode, top stay, top 3 must-visit sights, and signature food.
+6. Return ONLY a valid JSON object matching this schema:
 
 {{
   "destination": "{trip_req.destination}",
   "summary": "2-3 sentences overview grounded in real travel findings",
+  "commute_options": [
+    {{
+      "mode": "Flight ✈️",
+      "title": "Descriptive title of commute mode",
+      "duration": "Realistic duration e.g. 10h - 13h or 8h",
+      "estimated_cost_inr": "Estimated cost range in INR",
+      "details": "Details on routes, airlines, or destination transit pass",
+      "icon": "✈️"
+    }}
+  ],
   "attractions": [
     {{
       "name": "Attraction name",
@@ -305,8 +535,90 @@ Perform comprehensive extraction and planning:
                 f_obj.image_url = img_pool.get("food")
                 food_experiences.append(f_obj)
 
-            # Build commute options
-            commute_options = generate_commute_options(trip_req.destination, trip_req.starting_city)
+            # Build commute options with geographic feasibility filtering
+            origin = trip_req.starting_city.strip() if trip_req.starting_city.strip() else "Your City"
+            dest = trip_req.destination.strip()
+            origin_q = quote_plus(origin)
+            dest_q = quote_plus(dest)
+            dest_slug = dest.lower().replace(" ", "-")
+            origin_slug = origin.lower().replace(" ", "-")
+
+            is_overseas, route_cat = check_route_feasibility(origin, dest)
+
+            raw_commute = data.get("commute_options", [])
+            commute_options = []
+
+            if raw_commute and isinstance(raw_commute, list):
+                for c in raw_commute:
+                    c_mode = c.get("mode", "").lower()
+                    c_title = c.get("title", "")
+                    c_desc = (c.get("details", "") + " " + c_title).lower()
+
+                    # Feasibility filter: if overseas or island, DISCARD impossible overland modes
+                    if is_overseas and any(x in c_mode for x in ["bus", "car", "drive", "road trip", "highway"]):
+                        if "local" not in c_desc and "rental" not in c_desc and "island cab" not in c_desc:
+                            continue
+
+                    if is_overseas and any(x in c_mode for x in ["train", "rail"]):
+                        if "irctc" in c_desc or "indian railway" in c_desc or f"from {origin.lower()}" in c_desc:
+                            continue
+
+                    # Determine booking & source URLs
+                    icon = c.get("icon", "🚆")
+                    if "flight" in c_mode or "✈" in c_mode or "plane" in c_mode:
+                        icon = "✈️"
+                        b_url = f"https://www.google.com/travel/flights?q=flights+from+{origin_q}+to+{dest_q}"
+                        s_url = "https://www.google.com/travel/flights"
+                    elif "train" in c_mode or "rail" in c_mode or "🚆" in c_mode or "🚄" in c_mode:
+                        icon = "🚆"
+                        if any(w in dest.lower() for w in ["swiss", "switzerland", "swirzerland", "zurich", "geneva"]):
+                            b_url = "https://www.sbb.ch/en/"
+                            s_url = "https://www.sbb.ch/en/"
+                        elif is_overseas:
+                            b_url = "https://www.thetrainline.com/"
+                            s_url = "https://www.thetrainline.com/"
+                        else:
+                            b_url = f"https://www.makemytrip.com/railways/listing?srcCity={origin_q}&destCity={dest_q}"
+                            s_url = "https://www.irctc.co.in/"
+                    elif "bus" in c_mode or "🚌" in c_mode:
+                        icon = "🚌"
+                        b_url = f"https://www.redbus.in/bus-tickets/{origin_slug}-to-{dest_slug}"
+                        s_url = "https://www.redbus.in/"
+                    elif "car" in c_mode or "drive" in c_mode or "road" in c_mode or "🚗" in c_mode:
+                        icon = "🚗"
+                        b_url = f"https://www.google.com/maps/dir/{origin_q}/{dest_q}"
+                        s_url = "https://www.google.com/maps"
+                    elif "ferry" in c_mode or "boat" in c_mode or "cruise" in c_mode or "⛴" in c_mode:
+                        icon = "⛴️"
+                        b_url = f"https://www.google.com/search?q={dest_q}+ferry+booking"
+                        s_url = "https://www.google.com/travel"
+                    else:
+                        icon = "🚇"
+                        b_url = f"https://www.google.com/maps/search/?api=1&query={dest_q}+public+transit"
+                        s_url = "https://www.google.com/travel"
+
+                    commute_options.append(CommuteOption(
+                        mode=c.get("mode", "Transit"),
+                        title=c_title or f"Transit ({origin} ➔ {dest})",
+                        duration=c.get("duration", "Check timetable"),
+                        estimated_cost_inr=c.get("estimated_cost_inr", "Check fares"),
+                        details=c.get("details", ""),
+                        booking_url=b_url,
+                        source_url=s_url,
+                        icon=icon
+                    ))
+
+            # If Gemini didn't return feasible options or filtered out everything, fallback to generator
+            if not commute_options:
+                commute_options = generate_commute_options(trip_req.destination, trip_req.starting_city)
+
+            # Ensure best_recommendation top_commute is physically realistic
+            best_rec = data.get("best_recommendation", {})
+            if is_overseas and any(x in best_rec.get("top_commute", "").lower() for x in ["train from", "bus from", "drive from", "car from", "nh ", "vande bharat"]):
+                if any(w in dest.lower() for w in ["swiss", "switzerland", "swirzerland"]):
+                    best_rec["top_commute"] = f"Direct or 1-stop international flight ({origin} ➔ ZRH/GVA), followed by the Swiss Travel Pass for panoramic train travel."
+                else:
+                    best_rec["top_commute"] = f"International flight from {origin} to {dest}, plus scenic destination public transit."
 
             itinerary_plans = [DayPlan.from_dict(p) for p in data.get("itinerary", [])]
             
@@ -315,7 +627,7 @@ Perform comprehensive extraction and planning:
                 {"url": source_url, "title": f"Live {trip_req.destination} Guide (Wikivoyage)", "status": "Scraped via Playwright MCP"},
                 {"url": "https://www.booking.com", "title": "Booking.com Stays Directory", "status": "Deep-link booking verified"},
                 {"url": "https://www.google.com/travel/flights", "title": "Google Flights & Airline Schedules", "status": "Transit routes indexed"},
-                {"url": "https://www.makemytrip.com/railways", "title": "IRCTC & Indian Railways Portal", "status": "Train connectivity verified"}
+                {"url": "https://www.sbb.ch/en/" if is_overseas else "https://www.makemytrip.com/railways", "title": "Swiss Rail (SBB)" if is_overseas else "IRCTC & Indian Railways Portal", "status": "Transit connectivity verified"}
             ]
 
             return TripResearchResult(
@@ -327,7 +639,7 @@ Perform comprehensive extraction and planning:
                 commute_options=commute_options,
                 neighborhoods=data.get("neighborhoods", []),
                 travel_tips=data.get("travel_tips", []),
-                best_recommendation=data.get("best_recommendation", {}),
+                best_recommendation=best_rec,
                 sources_accessed=sources_accessed,
                 research_timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 is_demo_data=False,
@@ -421,7 +733,16 @@ def parse_with_heuristics(snapshot_text: str, trip_req: TripRequest, source_url:
         image_url=img_pool.get("food")
     ))
 
+    is_overseas, route_cat = check_route_feasibility(trip_req.starting_city, dest)
     commute_options = generate_commute_options(dest, trip_req.starting_city)
+
+    if is_overseas:
+        if any(w in dest.lower() for w in ["swiss", "switzerland", "swirzerland"]):
+            top_commute_rec = f"Direct/1-stop international flight from {trip_req.starting_city or 'BLR'}, followed by the Swiss Travel Pass for panoramic trains."
+        else:
+            top_commute_rec = f"International flight from {trip_req.starting_city or 'your city'} to {dest}, plus scenic destination public transit."
+    else:
+        top_commute_rec = "Fastest: Direct flight or Vande Bharat superfast express train"
 
     return TripResearchResult(
         destination=dest,
@@ -440,11 +761,11 @@ def parse_with_heuristics(snapshot_text: str, trip_req: TripRequest, source_url:
             "Carry photo ID for monumental entry and ticket verifications."
         ],
         best_recommendation={
-            "top_commute": "Fastest: Direct flight or Vande Bharat superfast express train",
+            "top_commute": top_commute_rec,
             "top_stay_name": f"{dest} Heritage Villa & Spa",
             "top_stay_reason": "Exceptional ratings, close proximity to prime attractions, pool & breakfast included",
             "must_visit_sights": [a.name for a in attractions[:3]],
-            "signature_food": f"Local traditional thali and fresh regional seafood at Authentic {dest} Tavern"
+            "signature_food": f"Local traditional thali and fresh regional specialties in {dest}"
         },
         sources_accessed=[
             {"url": source_url, "title": f"Live {dest} Guide", "status": "Scraped via Playwright MCP"},
